@@ -484,8 +484,25 @@ async function resolveMemoryBootstrapEntry(
   return null;
 }
 
+/**
+ * When the agent directory lives inside an `agents/` folder (the standard
+ * multi-agent layout), widen the boundary used for symlink resolution to the
+ * workspace root (one level above `agents/`).  This allows bootstrap files
+ * that are symlinked from the agent directory to the shared workspace root
+ * (e.g. `../../SOUL.md`) to resolve successfully, while still rejecting
+ * symlinks that escape the workspace entirely.
+ */
+function resolveWorkspaceBoundary(agentDir: string): string {
+  const parent = path.resolve(agentDir, "..");
+  if (path.basename(parent) === "agents") {
+    return path.resolve(parent, "..");
+  }
+  return agentDir;
+}
+
 export async function loadWorkspaceBootstrapFiles(dir: string): Promise<WorkspaceBootstrapFile[]> {
   const resolvedDir = resolveUserPath(dir);
+  const boundaryDir = resolveWorkspaceBoundary(resolvedDir);
 
   const entries: Array<{
     name: WorkspaceBootstrapFileName;
@@ -530,7 +547,7 @@ export async function loadWorkspaceBootstrapFiles(dir: string): Promise<Workspac
   for (const entry of entries) {
     const loaded = await readWorkspaceFileWithGuards({
       filePath: entry.filePath,
-      workspaceDir: resolvedDir,
+      workspaceDir: boundaryDir,
     });
     if (loaded.ok) {
       result.push({
@@ -583,6 +600,7 @@ export async function loadExtraBootstrapFilesWithDiagnostics(
     return { files: [], diagnostics: [] };
   }
   const resolvedDir = resolveUserPath(dir);
+  const boundaryDir = resolveWorkspaceBoundary(resolvedDir);
 
   // Resolve glob patterns into concrete file paths
   const resolvedPaths = new Set<string>();
@@ -618,7 +636,7 @@ export async function loadExtraBootstrapFilesWithDiagnostics(
     }
     const loaded = await readWorkspaceFileWithGuards({
       filePath,
-      workspaceDir: resolvedDir,
+      workspaceDir: boundaryDir,
     });
     if (loaded.ok) {
       files.push({
